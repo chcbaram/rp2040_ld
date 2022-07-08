@@ -13,7 +13,7 @@
     {
       "label": "configure Windows",
       "type": "shell",
-      "command": "cmake -S . -B build -G 'MinGW Makefiels' ",
+      "command": "cmake -S . -B build -G 'MinGW Makefiles' ",
       "problemMatcher": [],
       "group": "build"
     },    
