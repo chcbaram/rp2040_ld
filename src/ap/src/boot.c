@@ -17,6 +17,15 @@
 #define BOOT_CMD_TAG_READ               0x12
 #define BOOT_CMD_TAG_VERIFY             0x13
 
+#define BOOT_CMD_UPDATE_ERASE           0x20
+#define BOOT_CMD_UPDATE_WRITE           0x21
+#define BOOT_CMD_UPDATE_READ            0x22
+#define BOOT_CMD_UPDATE_FW              0x24
+
+#define BOOT_CMD_UPDATE_TAG_ERASE       0x25
+#define BOOT_CMD_UPDATE_TAG_WRITE       0x26
+#define BOOT_CMD_UPDATE_TAG_READ        0x27
+#define BOOT_CMD_UPDATE_TAG_VERIFY      0x28
 
 
 static cmd_t cmd_boot;
@@ -333,6 +342,175 @@ uint8_t bootCmdTagErase(uint32_t timeout)
 
 
   cmdSendCmdRxResp(p_cmd, BOOT_CMD_TAG_ERASE, NULL, 0, timeout);
+  ret = p_cmd->error;
+
+  return ret;   
+}
+
+uint8_t bootCmdUpdateErase(uint32_t addr, uint32_t length, uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+  uint8_t tx_buf[8];
+
+
+  tx_buf[0] = (addr >>  0) & 0xFF;
+  tx_buf[1] = (addr >>  8) & 0xFF;
+  tx_buf[2] = (addr >> 16) & 0xFF;
+  tx_buf[3] = (addr >> 24) & 0xFF;
+
+  tx_buf[4] = (length >>  0) & 0xFF;
+  tx_buf[5] = (length >>  8) & 0xFF;
+  tx_buf[6] = (length >> 16) & 0xFF;
+  tx_buf[7] = (length >> 24) & 0xFF;
+
+  cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_ERASE, tx_buf, 8, timeout);
+
+  ret = p_cmd->error;
+
+  return ret;
+}
+
+uint8_t bootCmdUpdateWrite(uint32_t addr, uint8_t *p_data, uint32_t length, uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+  uint8_t *tx_buf;
+
+
+  tx_buf = p_cmd->tx_packet.data;
+
+  tx_buf[0] = (addr >>  0) & 0xFF;
+  tx_buf[1] = (addr >>  8) & 0xFF;
+  tx_buf[2] = (addr >> 16) & 0xFF;
+  tx_buf[3] = (addr >> 24) & 0xFF;
+
+  tx_buf[4] = (length >>  0) & 0xFF;
+  tx_buf[5] = (length >>  8) & 0xFF;
+  tx_buf[6] = (length >> 16) & 0xFF;
+  tx_buf[7] = (length >> 24) & 0xFF;
+
+  for (int i=0; i<length; i++)
+  {
+    tx_buf[8+i] = p_data[i];  
+  }
+
+  cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_WRITE, tx_buf, 8+length, timeout);
+
+  ret = p_cmd->error;
+
+  return ret;  
+}
+
+uint8_t bootCmdUpdateRead(uint32_t addr, uint8_t *p_data, uint32_t length, uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+  uint8_t *tx_buf;
+
+
+  tx_buf = p_cmd->tx_packet.data;
+
+  tx_buf[0] = (addr >>  0) & 0xFF;
+  tx_buf[1] = (addr >>  8) & 0xFF;
+  tx_buf[2] = (addr >> 16) & 0xFF;
+  tx_buf[3] = (addr >> 24) & 0xFF;
+
+  tx_buf[4] = (length >>  0) & 0xFF;
+  tx_buf[5] = (length >>  8) & 0xFF;
+  tx_buf[6] = (length >> 16) & 0xFF;
+  tx_buf[7] = (length >> 24) & 0xFF;
+
+
+  if (cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_READ, tx_buf, 8, timeout) == true)
+  {
+    cmd_packet_t *p_packet = &p_cmd->rx_packet;
+
+    if (p_cmd->error == CMD_OK)
+    {
+      for (int i=0; i<p_packet->length; i++)
+      {
+        p_data[i] = p_packet->data[i];
+      }  
+    }
+  }
+
+  ret = p_cmd->error;
+
+  return ret;  
+}
+
+uint8_t bootCmdUpdateFw(uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+
+
+  if (cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_FW, NULL, 0, timeout) == true)
+  {
+    
+  }
+
+  ret = p_cmd->error;
+
+  return ret;  
+}
+
+uint8_t bootCmdUpdateTagRead(firm_tag_t *p_tag)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+
+
+  if (cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_TAG_READ, NULL, 0, 100) == true)
+  {
+    cmd_packet_t *p_packet = &p_cmd->rx_packet;
+
+    if (p_cmd->error == CMD_OK)
+    {
+      uint8_t *p_data = (uint8_t *)p_tag;
+      for (int i=0; i<p_packet->length; i++)
+      {
+        p_data[i] = p_packet->data[i];
+      }  
+    }
+  }
+  ret = p_cmd->error;
+
+  return ret;  
+}
+
+uint8_t bootCmdUpdateTagWrite(firm_tag_t *p_tag)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+
+
+  cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_TAG_WRITE, (uint8_t *)p_tag, sizeof(firm_tag_t), 500);
+  ret = p_cmd->error;
+
+  return ret; 
+}
+
+uint8_t bootCmdUpdateTagVerify(uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+
+
+  cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_TAG_VERIFY, NULL, 0, timeout);
+  ret = p_cmd->error;
+
+  return ret;   
+}
+
+uint8_t bootCmdUpdateTagErase(uint32_t timeout)
+{
+  uint8_t ret = CMD_OK;
+  cmd_t *p_cmd = &cmd_boot;
+
+
+  cmdSendCmdRxResp(p_cmd, BOOT_CMD_UPDATE_TAG_ERASE, NULL, 0, timeout);
   ret = p_cmd->error;
 
   return ret;   

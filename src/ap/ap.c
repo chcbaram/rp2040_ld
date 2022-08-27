@@ -35,6 +35,7 @@ typedef struct
   char     file_str[128];
   uint32_t addr_fw;
   bool     run_fw;
+  bool     update_mode;
   uint32_t addr_ver;  
 } arg_option_t;
 
@@ -47,6 +48,7 @@ void apShowHelp(void);
 bool apGetOption(int argc, char *argv[]);
 void apCliMode(void);
 void apDownMode(void);
+void apUpdateMode(void);
 int32_t getFileSize(char *file_name);
 int32_t getFileVersion(char *file_name, firm_ver_t *p_ver);
 uint32_t getFileCrc(char *file_name);
@@ -78,7 +80,16 @@ void apMain(int argc, char *argv[])
   if (arg_option.mode == MODE_CLI)
     apCliMode();
   else
-    apDownMode();
+  {
+    if (arg_option.update_mode == true)
+    {
+      apUpdateMode();
+    }
+    else
+    {
+      apDownMode();
+    }
+  }
 
   apExit();
 }
@@ -94,8 +105,9 @@ bool apGetOption(int argc, char *argv[])
   arg_option.run_fw = false;
   arg_option.arg_bits = 0;
   arg_option.port_baud = 115200;
+  arg_option.update_mode = false;
 
-  while((opt = getopt(argc, argv, "hcp:b:f:a:rv:")) != -1)
+  while((opt = getopt(argc, argv, "hcp:b:f:a:rv:u")) != -1)
   {
     switch(opt)
     {
@@ -141,6 +153,11 @@ bool apGetOption(int argc, char *argv[])
         logPrintf("-r 1\n");
         break;
 
+      case 'u':
+        arg_option.update_mode = true;
+        logPrintf("update mode true\n");
+        break;
+
       case '?':
         logPrintf("Unknown\n");
         break;
@@ -160,6 +177,7 @@ void apShowHelp(void)
   logPrintf("            -f fw.bin: firmware\n");
   logPrintf("            -a 0x10020400: firmware addr\n");
   logPrintf("            -v 0x400: version addr\n");
+  logPrintf("            -u       : update mode\n");
   logPrintf("            -r       : run firmware\n");
 }
 
@@ -504,6 +522,272 @@ void apDownMode(void)
 
   logPrintf("\n");
   logPrintf("[ Download End.. ]");
+}
+
+void apUpdateMode(void)
+{
+  uint32_t arg_check = ARG_OPTION_PORT | ARG_OPTION_FILE;
+
+  logPrintf("\n");
+
+  if ((arg_option.arg_bits & arg_check) != arg_check)
+  {
+    if ((arg_option.arg_bits & ARG_OPTION_PORT) == 0)
+    {
+      logPrintf("-p port empty\n");
+    }
+    if ((arg_option.arg_bits & ARG_OPTION_FILE) == 0)
+    {
+      logPrintf("-f file empty\n");
+    }
+
+    return;
+  }
+
+  logPrintf("[ Update Begin.. ]\n\n");
+
+
+  uint8_t err_code;
+  char *file_name;
+  uint32_t addr;
+  int32_t file_len;
+  uint32_t baud;
+  char boot_version[32];
+  char boot_name[32];
+  char firm_version[32];
+  char firm_name[32];
+  firm_ver_t firm_ver;
+  firm_tag_t firm_tag;
+  uint32_t pre_time;
+  bool ret;
+
+  arg_option.addr_fw = 0;
+
+  file_name = arg_option.file_str;
+  addr = arg_option.addr_fw;
+  baud = arg_option.port_baud;
+
+  file_len = getFileSize(file_name);
+  if (file_len < 0)
+  {
+    apExit();
+  }
+  logPrintf("file_name  : %s \n", file_name);
+  logPrintf("file_addr  : 0x%X \n", addr);
+  logPrintf("file_len   : %d Bytes\n", file_len);
+
+  if (file_len <= 0)
+  {
+    logPrintf("File not available\n");
+    apExit();
+  }
+
+  firm_tag.magic_number = TAG_MAGIC_NUMBER;
+  firm_tag.fw_addr = arg_option.addr_fw;
+  firm_tag.fw_crc = 0;
+  firm_tag.fw_size = file_len;
+  firm_tag.fw_crc = getFileCrc(file_name);
+
+  logPrintf("file_crc   : 0x%04X\n", firm_tag.fw_crc);
+
+  if (getFileVersion(file_name, &firm_ver) < 0)
+  {
+    apExit();
+  }
+  if (firm_ver.magic_number != VERSION_MAGIC_NUMBER)
+  {
+    firm_ver.version_str[0] = 0;
+    firm_ver.name_str[0] = 0;
+  }
+  logPrintf("file ver   : %s\n", firm_ver.version_str);    
+  logPrintf("file name  : %s\n", firm_ver.name_str);  
+
+
+  FILE *fp;
+
+  if ((fp = fopen(file_name, "rb")) == NULL)
+  {
+    logPrintf("Unable to open %s\n", file_name);
+    apExit();
+  }
+
+
+  ret = bootInit(_USE_UART_CMD, arg_option.port_str, baud);
+  if (ret != true)
+  {
+    logPrintf("bootInit() Fail\n");
+    apExit();
+  }
+  
+  while(1)
+  {
+    if (file_len <= 0) break;
+
+
+    logPrintf("\n");
+    
+    // Read Boot Version
+    //
+    err_code = bootCmdReadBootVersion(boot_version);
+    if (err_code == CMD_OK)
+    {
+      logPrintf("boot ver   : %s\n", boot_version);    
+    }
+    else
+    {
+      logPrintf("boot ver   : fail %d\n", err_code);   
+      break; 
+    }
+
+    err_code = bootCmdReadBootName(boot_name);
+    if (err_code == CMD_OK)
+    {
+      logPrintf("boot name  : %s\n", boot_name);    
+    }
+    else
+    {
+      logPrintf("boot name  : fail %d\n", err_code);   
+      break; 
+    }
+
+    logPrintf("\n");
+
+    // Read Firm Version
+    //
+    err_code = bootCmdReadFirmVersion(firm_version);
+    if (err_code == CMD_OK)
+    {
+      logPrintf("firm ver   : %s\n", firm_version);    
+    }
+
+    err_code = bootCmdReadFirmName(firm_name);
+    if (err_code == CMD_OK)
+    {
+      logPrintf("firm name  : %s\n", firm_name);    
+    }
+
+    logPrintf("\n");
+
+    // 0. Tag Erase
+    //
+    pre_time = millis();
+    err_code = bootCmdUpdateTagErase(1000);
+    if (err_code != CMD_OK)
+    {
+      logPrintf("tag  erase : Fail, %d\n", err_code);      
+      break;
+    }
+    logPrintf("tag  erase : OK, %dms\n", millis()-pre_time);   
+
+    // 1. Flash Erase
+    //
+    pre_time = millis();
+    err_code = bootCmdUpdateErase(addr, file_len, 5000);
+    if (err_code != CMD_OK)
+    {
+      logPrintf("firm erase Fail : %d\n", err_code);      
+      break;
+    }
+    logPrintf("firm erase : OK, %dms\n", millis()-pre_time);    
+
+
+    // 2. Flash Write
+    //
+    uint32_t tx_block_size = 256;
+    uint8_t  tx_buf[256];
+    uint32_t tx_len;
+    int32_t  len_to_send;
+    bool write_done = false;
+    
+    tx_len = 0;    
+    pre_time = millis();
+    while(tx_len < file_len)
+    {
+      len_to_send = fread(tx_buf, 1, tx_block_size, fp);
+      if (len_to_send <= 0)
+      {
+        break;
+      }
+
+      err_code = bootCmdUpdateWrite(addr + tx_len, tx_buf, len_to_send, 500);
+      if (err_code != CMD_OK)
+      {
+        logPrintf("firm write Fail : %d, 0x%X\n", err_code, addr + tx_len);        
+        break;
+      }
+      else
+      {
+        logPrintf("firm write : %d%%\r", ((tx_len+len_to_send)*100/file_len));
+      }
+
+      tx_len += len_to_send;    
+
+      if (tx_len == file_len)
+      {
+        write_done = true;
+        break;
+      }      
+    }
+
+    logPrintf("\n");
+
+    if (write_done == true)
+    {
+      logPrintf("           : OK, %dms\n", millis()-pre_time);      
+
+      
+      err_code = bootCmdUpdateTagWrite(&firm_tag);
+      if (err_code != CMD_OK)
+      {
+        logPrintf("tag  write : Fail, %d\n", err_code);
+        break;
+      }
+      else
+      {
+        logPrintf("tag  write : OK\n");
+      }
+
+      pre_time = millis();
+      err_code = bootCmdUpdateTagVerify(1000);
+      if (err_code != CMD_OK)
+      {
+        logPrintf("tag  verify: Fail, %d, %dms\n", err_code, millis()-pre_time);
+        break;
+      }
+      else
+      {
+        logPrintf("tag  verify: OK, %dms\n", millis()-pre_time);
+      }
+
+      logPrintf("update fw  : ");
+      pre_time = millis();
+      err_code = bootCmdUpdateFw(10000);
+      if (err_code == CMD_OK)
+      {
+        logPrintf("OK, %dms\n", millis()-pre_time);   
+
+        err_code = bootCmdJumpToFw();
+        if (err_code == CMD_OK)
+        {
+          logPrintf("jump to fw : OK\n");        
+        }
+        else
+        {
+          logPrintf("jump to fw : Fail(%d)\n", err_code);        
+        }
+      }
+      else
+      {
+        logPrintf("Fail(%d)\n", err_code);        
+      }
+    }
+    break;
+  }
+
+  fclose(fp);
+
+  logPrintf("\n");
+  logPrintf("[ Update End.. ]");
 }
 
 void apExit(void)

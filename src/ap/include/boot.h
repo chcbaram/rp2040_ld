@@ -21,4 +21,14 @@ uint8_t bootCmdTagWrite(firm_tag_t *p_tag);
 uint8_t bootCmdTagVerify(uint32_t timeout);
 uint8_t bootCmdTagErase(uint32_t timeout);
 
+uint8_t bootCmdUpdateErase(uint32_t addr, uint32_t length, uint32_t timeout);
+uint8_t bootCmdUpdateWrite(uint32_t addr, uint8_t *p_data, uint32_t length, uint32_t timeout);
+uint8_t bootCmdUpdateRead(uint32_t addr, uint8_t *p_data, uint32_t length, uint32_t timeout);
+uint8_t bootCmdUpdateFw(uint32_t timeout);
+uint8_t bootCmdUpdateTagRead(firm_tag_t *p_tag);
+uint8_t bootCmdUpdateTagWrite(firm_tag_t *p_tag);
+uint8_t bootCmdUpdateTagVerify(uint32_t timeout);
+uint8_t bootCmdUpdateTagErase(uint32_t timeout);
+
+
 #endif
